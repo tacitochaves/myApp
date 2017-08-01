@@ -1,0 +1,64 @@
+#!/usr/bin/env perl
+use Mojolicious::Lite;
+use Mojo::JWT;
+
+plugin 'Auth';
+
+use lib 'lib';
+use Schema;
+
+# schema
+helper schema => sub {
+    return Schema->connect( 'dbi:mysql:jwt', 'root', 'ildenice', {mysql_enable_utf8 => 1, AutoCommit => 1} );
+};
+
+# the method is post
+helper is_post => sub {
+    return (shift)->req->method eq 'POST' ? 1 : 0;
+};
+
+helper jwt => sub {
+    return Mojo::JWT->new(secret => 'ildenice' || die);
+};
+
+any '/' => sub {
+    my $c = shift;
+
+    # load schema
+    my $schema = $c->schema;
+
+    if ( $c->is_post ) {
+
+        my $user = $c->req->json || {};
+
+        if ( my $user_rs = $c->auth( $user ) ) {
+            my $jwt = $c->jwt;
+            my $token = $jwt->claims({id => $user_rs->id, user => $user_rs->username})->encode;
+            return $c->render(json => $token, status => 200);
+        };
+
+        # denied
+        return $c->render(json => {erro => "Usuário ou senha inválidos!"}, status => 400);
+    }
+
+} => 'sigin_in';
+
+app->start;
+__DATA__
+
+@@ sigin_in.html.ep
+% layout 'default';
+<form method="POST" name="index" action="/">
+    <label>Username</label><br>
+    <input name="username" type="text" /><br><br>
+    <label>Password</label><br>
+    <input name="password" type="password" /><br><br>
+    <input name="send" type="submit" value="Send" />
+</form>
+
+@@ layouts/default.html.ep
+<!DOCTYPE html>
+<html>
+  <head><title><%= title %></title></head>
+  <body><%= content %></body>
+</html>
